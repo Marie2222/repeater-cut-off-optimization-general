@@ -94,6 +94,7 @@ class RepeaterChainSimulation():
         if max_k > trunc:
             print(max_k)
             print(trunc)
+        max_k = max_k.real
         max_k = int(max_k)
 
         # Transpose the array of state to the shape (1, 4, trunc)
@@ -193,7 +194,7 @@ class RepeaterChainSimulation():
         return result
 
     def entanglement_swap(self,
-        pmf1, lambda_func1, pmf2, lambda_func2,
+        pmf1, func1, pmf2, func2,
         cutoff, cut_type, depolar_rate=0., dephase_rate=0., amplitude_damping_rate=0., bit_phase_flip_rate=0.):
         """
         Calculate the waiting time and average parameters with time-out
@@ -236,12 +237,12 @@ class RepeaterChainSimulation():
 
         # P'_f
         pf_cutoff = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=False,
+            pmf1, pmf2, func1, func2, ycut=False,
             cutoff=cutoff, cut_type=cut_type, 
             evaluate_func="1", depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # P'_s
         ps_cutoff = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=True,
+            pmf1, pmf2, func1, func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type, 
             evaluate_func="1", depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # P_f or P_s 
@@ -255,7 +256,7 @@ class RepeaterChainSimulation():
         
         # Wsuc * P_s
         state_suc = join_links_state(
-            pmf1, pmf2, lambda_func1=lambda_func1, lambda_func2=lambda_func2, ycut=True,
+            pmf1, pmf2, lambda_func1=func1, lambda_func2=func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="w1w2", depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # Wprep * Pr(Tout = t)
@@ -287,7 +288,7 @@ class RepeaterChainSimulation():
 
 
     def distillation(self,
-            pmf1, lambda_func1, pmf2, lambda_func2,
+            pmf1, func1, pmf2, func2,
             cutoff, cut_type, depolar_rate=0., dephase_rate=0., amplitude_damping_rate=0., bit_phase_flip_rate=0.):
         """
         Calculate the waiting time and average Bell diagonal coefficients
@@ -324,16 +325,16 @@ class RepeaterChainSimulation():
 
         # P'_f  cutoff attempt when cutoff fails
         pf_cutoff = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=False,
+            pmf1, pmf2, func1, func2, ycut=False,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="1", depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # P'_ss  cutoff attempt when cutoff and dist succeed
         pss_cutoff = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=True,
+            pmf1, pmf2, func1, func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="0.5+0.5w1w2",  depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         pss_cutoff_link = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=True,
+            pmf1, pmf2, func1, func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="1",  depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # P_s  dist attempt when dist succeeds
@@ -346,7 +347,7 @@ class RepeaterChainSimulation():
         del pss_cutoff
         # P'_sf  cutoff attempt when cutoff succeeds but dist fails
         psf_cutoff = join_links(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=True,
+            pmf1, pmf2, func1, func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="0.5-0.5w1w2", depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate) 
         # P_f  dist attempt when dist fails
@@ -365,7 +366,7 @@ class RepeaterChainSimulation():
 
         # Wsuc * P'_ss
         state_suc = join_links_state(
-            pmf1, pmf2, lambda_func1, lambda_func2, ycut=True,
+            pmf1, pmf2, func1, func2, ycut=True,
             cutoff=cutoff, cut_type=cut_type,
             evaluate_func="w1+w2+4w1w2",  depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # Wprep * P_s
@@ -395,7 +396,7 @@ class RepeaterChainSimulation():
 
 
     def compute_unit(self,
-            parameters, pmf1, lambda_func1, pmf2=None, lambda_func2=None,
+            parameters, pmf1, func1, pmf2=None, func2=None,
             unit_kind="swap", step_size=1):
         """
         Calculate the the waiting time distribution and
@@ -423,10 +424,10 @@ class RepeaterChainSimulation():
         """
         if pmf2 is None:
             pmf2 = pmf1
-        if lambda_func2 is None:
-            lambda_func2 = lambda_func1
+        if func2 is None:
+            func2 = func1
         p_gen = parameters["p_gen"]
-        lambdas = parameters["lambdas"]
+        coeff = parameters["coefficients"]
         cut_type = parameters.get("cut_type", "memory_time")
         depolar_rate = parameters.get("depolarizing_rate", 0.)
         dephase_rate = parameters.get("dephasing_rate", 0.)
@@ -453,21 +454,21 @@ class RepeaterChainSimulation():
         if cut_type == "fidelity" and not (cutoff >= 0. or cutoff < 1.):
             raise TypeError(f"Fidelity cut-off must be a real number between 0 and 1.")
         #if sum of lamdas is not 1.0 raise error
-        if not np.isclose(np.sum(lambdas), 1.0):
-            raise TypeError(f"Invalid lambda parameters, sum of lambdas must be 1.0")
+        # if not np.isclose(np.sum(coeff), 1.0):
+        #     raise TypeError(f"Invalid lambda parameters, sum of lambdas must be 1.0")
         # swap or distillation for next level
         if unit_kind == "swap":
-            pmf, lambda_func = self.entanglement_swap(
-                pmf1, lambda_func1, pmf2, lambda_func2,
+            pmf, func = self.entanglement_swap(
+                pmf1, func1, pmf2, func2,
                 cutoff=cutoff, cut_type=cut_type, depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         elif unit_kind == "dist":
-            pmf, lambda_func = self.distillation(
-                pmf1, lambda_func1, pmf2, lambda_func2,
+            pmf, func = self.distillation(
+                pmf1, func1, pmf2, func2,
                 cutoff=cutoff, cut_type=cut_type, depolar_rate=depolar_rate, dephase_rate=dephase_rate, amplitude_damping_rate=amplitude_damping_rate, bit_phase_flip_rate=bit_phase_flip_rate)
         # erase ridiculous parameters,
         # it can happen when the probability is too small ~1.0e-20.
-        lambda_func = np.where(np.isnan(lambda_func), 1., lambda_func)
-        lambda_func = np.clip(lambda_func, 0., 1.0)
+        func = np.where(np.isnan(func), 1., func)
+        func = np.clip(func, 0., 1.0)
 
         # check probability coverage
         coverage = np.sum(sublist[0] for sublist in pmf)
@@ -477,14 +478,14 @@ class RepeaterChainSimulation():
                 "please increase t_trunc.\n".format(
                     coverage*100))
         
-        return pmf, lambda_func
+        return pmf, func
 
     def general_protocol(self, parameters, all_level=False):
 
         parameters = deepcopy(parameters)
         protocol = parameters["protocol"]
         p_gen = parameters["p_gen"]
-        lambdas = parameters["lambdas"]
+        coeff = parameters["coefficients"]
         depolar_rate = parameters.get("depolarizing_rate", 0.)
         dephase_rate = parameters.get("dephasing_rate", 0.)
         amplitude_damping_rate = parameters.get("amplitude_damping_rate", 0.)
@@ -521,10 +522,11 @@ class RepeaterChainSimulation():
         t_list = np.arange(1, t_trunc) # t_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         pmf = p_gen * (1 - p_gen)**(t_list - 1) # pmf = [0.1, 0.09, 0.081, 0.0729, 0.06561, 0.059049, 0.0531441, 0.04782969, 0.043046721, 0.0387420489]
         pmf = np.concatenate((np.array([0.]), pmf)) # pmf = [0.0, 0.1, 0.09, 0.081, 0.0729, 0.06561, 0.059049, 0.0531441, 0.04782969, 0.043046721, 0.0387420489]
-        pmf = np.tile(pmf[:, np.newaxis], 16) # pmf = [[0.0, 0.0, 0.0, 0.0], [0.1, 0.1, 0.1, 0.1], [0.09, 0.09, 0.09, 0.09], [0.081, 0.081, 0.081, 0.081], [0.0729, 0.0729, 0.0729, 0.0729], [0.06561, 0.06561, 0.06561, 0.06561], [0.059049, 0.059049, 0.059049, 0.059049], [0.0531441, 0.0531441, 0.0531441, 0.0531441], [0.04782969, 0.04782969, 0.04782969, 0.04782969], [0.043046721, 0.043046721, 0.043046721, 0.043046721], [0.0387420489, 0.0387420489, 0.0387420489, 0.0387420489]]
-        lambda_func = np.array([lambdas] * t_trunc)
+        pmf = np.tile(pmf[:, np.newaxis], len(coeff)) # pmf = [[0.0, 0.0, 0.0, 0.0], [0.1, 0.1, 0.1, 0.1], [0.09, 0.09, 0.09, 0.09], [0.081, 0.081, 0.081, 0.081], [0.0729, 0.0729, 0.0729, 0.0729], [0.06561, 0.06561, 0.06561, 0.06561], [0.059049, 0.059049, 0.059049, 0.059049], [0.0531441, 0.0531441, 0.0531441, 0.0531441], [0.04782969, 0.04782969, 0.04782969, 0.04782969], [0.043046721, 0.043046721, 0.043046721, 0.043046721], [0.0387420489, 0.0387420489, 0.0387420489, 0.0387420489]]
+        func = np.array([coeff] * t_trunc)
         if all_level:
-            full_result = [(pmf, lambda_func)]
+            full_result = [(pmf, func)]
+        func = func.astype(np.complex128)
 
         total_step_size = 1
         # protocol unit level by level
@@ -536,15 +538,17 @@ class RepeaterChainSimulation():
             parameters["rt_cut"] = rt_cut[i]
         
             if operation == 0:
-                pmf, lambda_func = self.compute_unit(
-                    parameters, pmf, lambda_func, unit_kind="swap", step_size=total_step_size)
+                pmf, func = self.compute_unit(
+                    parameters, pmf, func, unit_kind="swap", step_size=total_step_size)
             elif operation == 1:
-                pmf, lambda_func = self.compute_unit(
-                    parameters, pmf, lambda_func, unit_kind="dist", step_size=total_step_size)
+                pmf, func = self.compute_unit(
+                    parameters, pmf, func, unit_kind="dist", step_size=total_step_size)
             if all_level:
-                full_result.append((pmf, lambda_func))
-        final_pmf = [phiplus[0] for phiplus in pmf]
-        final_lambda_func = lambda_func
+                full_result.append((pmf, func))
+        final_pmf = [sublist[0] for sublist in pmf]
+        final_pmf = np.array(final_pmf, dtype=complex)
+        final_pmf = final_pmf[np.isreal(final_pmf)].real
+        final_lambda_func = func
 
         if all_level:
             return full_result

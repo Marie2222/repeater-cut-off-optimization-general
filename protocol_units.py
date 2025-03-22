@@ -20,54 +20,36 @@ Error model
 
 """
 @nb.jit(nopython=True, error_model="numpy")
-def depolarizing_noise(lambdas, t, p):
+def depolarizing_noise(link, t, p):
     """Applies depolarizing noise to the Bell Diagonal state, ensuring normalization."""
     p_t = 1 - np.exp(-p * t)
-    # Apply depolarization to each lambda
-    new_lambdas = [(1 - p_t) * lambda_0 + p_t / 4 for lambda_0 in lambdas]
-    new_lambdas = np.asarray(new_lambdas)
-    return new_lambdas
+    new_link = [(1 - p_t) * parameter + p_t / 4 for parameter in link]
+    return np.asarray(new_link)
 
 @nb.jit(nopython=True, error_model="numpy")
-def dephasing_noise(lambdas, t, gamma):
+def dephasing_noise(link, t, gamma):
     """Applies dephasing noise (affecting lambda_2 and lambda_3) with normalization."""
     decay_factor = (1 - np.exp(-gamma * t))/2
-    new_lambdas = [
-        lambdas[0] * (1 - decay_factor) + lambdas[1] * decay_factor,  # Redistribute lost probability
-        lambdas[1] * (1 - decay_factor) + lambdas[0] * decay_factor,
-        lambdas[2] * (1 - decay_factor) + lambdas[3] * decay_factor,
-        lambdas[3] * (1 - decay_factor) + lambdas[2] * decay_factor   # Redistribute lost probability
-    ]
-    new_lambdas = np.asarray(new_lambdas)
-    return new_lambdas
+    new_link = [(1 - decay_factor) * parameter if i % 5 != 0 else parameter for i, parameter in enumerate(link)]
+    return np.asarray(new_link)
 
 @nb.jit(nopython=True, error_model="numpy")
-def amplitude_damping(lambdas, t, gamma):
+def amplitude_damping(link, t, gamma):
     """Models amplitude damping noise affecting lambda_1 and lambda_4, ensuring probability conservation."""
     p_t = 1 - np.exp(-gamma * t)
-    lost_probability = (lambdas[0] - lambdas[3]) * p_t
-    new_lambdas = [
-        lambdas[0] - lost_probability,
-        lambdas[1],
-        lambdas[2],
-        lambdas[3] + lost_probability
+    lost_probability = (link[0] - link[3]) * p_t
+    new_link = [
+        (1 - p_t) * parameter if i in [0, 5, 10, 15] else (1 - p_t) * parameter + p_t * (1 if i == 0 else 0)
+        for i, parameter in enumerate(lost_probability)
     ]
-    new_lambdas = np.asarray(new_lambdas)
-    return new_lambdas
+    return np.asarray(new_link)
 
 @nb.jit(nopython=True, error_model="numpy")
-def bit_phase_flip(lambdas, t, p):
+def bit_phase_flip(link, t, p):
     """Applies bit-flip or phase-flip errors (affecting lambda_2 and lambda_3) with normalization."""
-    factor = (1 - 2 * p * (1 - np.exp(-t)))
-    lost_probability = (1 - factor) * (lambdas[1] + lambdas[2])
-    new_lambdas = [
-        lambdas[0] + lost_probability / 2,  # Redistribute lost probability
-        lambdas[1] * factor,
-        lambdas[2] * factor,
-        lambdas[3] + lost_probability / 2   # Redistribute lost probability
-    ]
-    new_lambdas = np.asarray(new_lambdas)
-    return new_lambdas
+    p_t = 1 - np.exp(-p * t)
+    new_link = [(1 - p_t) * parameter + p_t * (-parameter) for parameter in link]
+    return np.asarray(new_link)
 
 """
 Success probability p and
@@ -103,9 +85,12 @@ def get_swap_prob_suc(t1, t2, link1, link2, depolar_rate=0., dephase_rate=0., am
     """
     Get w_swap
     """
-    output =  (link1[0] * link2[0] + link1[4] * link2[1] - link1[8] * link2[2] + link1[12] * link2[3]) / 2 
-
-    return [output, output, output, output]
+    output =  (link1[0] * link2[0] + link1[4] * link2[1] - link1[8] * link2[2] + link1[12] * link2[3]) / 4
+    # return output in list with len(link1) components
+    return [
+        output, output, output, output, output, output, output, output, 
+        output, output, output, output, output, output, output, output
+    ]
 
 
 @nb.jit(nopython=True, error_model="numpy")
@@ -113,31 +98,26 @@ def get_swap_lambda_out(t1, t2, link1, link2, depolar_rate=0., dephase_rate=0., 
     """
     Get w_swap
     """
-    get_swap_prob = get_swap_prob_suc(t1, t2, link1, link2, depolar_rate, dephase_rate, amplitude_damping_rate, bit_phase_flip_rate) 
-    link = np.zeros(len(link1))
-    link[0] = ((link1[0] + link1[3]) * (link2[0] + link2[12]) + (link1[4] + link1[7]) * (link2[1] + link2[13]) - (link1[8] + link1[11]) * (link2[2] + link2[14]) + (link1[12] + link1[15]) * (link2[3] + link2[15])) / (8 * get_swap_prob[0])
-    link[1] = ((link1[1] + link1[2]*1j) * (link2[0] + link2[12]) + (link1[5] + link1[6]*1j) * (link2[1] + link2[13]) - (link1[9] + link1[10]*1j) * (link2[2] + link2[14]) + (link1[13] + link1[14]*1j) * (link2[3] + link2[15])) / (8 * get_swap_prob[1])
-    link[2] = ((link1[0] + link1[3]) * (link2[4] + link2[8]*1j) + (link1[4] + link1[7]) * (link2[5] + link2[9]*1j) - (link1[8] + link1[11]) * (link2[6] + link2[10]*1j) + (link1[12] + link1[14]) * (link2[7] + link2[11]*1j)) / (8 * get_swap_prob[2])
-    link[3] = ((link1[1] + link1[2]*1j) * (link2[4] + link2[8]*1j) + (link1[5] + link1[6]*1j) * (link2[5] + link2[9]*1j) - (link1[9] + link1[10]*1j) * (link2[6] + link2[10]*1j) + (link1[13] + link1[14]*1j) * (link2[7] + link2[11]*1j)) / (8 * get_swap_prob[3])   
-    link[4] = ((link1[1] - link1[2]*1j) * (link2[0] + link2[12]) + (link1[5] - link1[6]*1j) * (link2[1] + link2[13]) - (link1[9] - link1[10]*1j) * (link2[2] + link2[14]) + (link1[13] - link1[14]*1j) * (link2[3] + link2[15])) / (8 * get_swap_prob[4])   
-    link[5] = ((link1[0] - link1[3]) * (link2[0] + link2[12]) + (link1[4] - link1[7]) * (link2[1] + link2[13]) - (link1[8] - link1[11]) * (link2[2] + link2[14]) + (link1[12] - link1[15]) * (link2[3] + link2[15])) / (8 * get_swap_prob[5])
-    link[6] = ((link1[1] - link1[2]*1j) * (link2[4] + link2[8]*1j) + (link1[5] - link1[6]*1j) * (link2[5] + link2[9]*1j) - (link1[9] - link1[10]*1j) * (link2[6] + link2[10]*1j) + (link1[13] - link1[14]*1j) * (link2[7] + link2[11]*1j)) / (8 * get_swap_prob[6])
-    link[7] = ((link1[0] - link1[3]) * (link2[4] + link2[8]*1j) + (link1[4] - link1[7]) * (link2[5] + link2[9]*1j) - (link1[8] - link1[11]) * (link2[6] + link2[10]*1j) + (link1[12] - link1[14]) * (link2[7] + link2[11]*1j)) / (8 * get_swap_prob[7])
-    link[8] = ((link1[0] + link1[3]) * (link2[4] - link2[8]*1j) + (link1[4] + link1[7]) * (link2[5] - link2[9]*1j) - (link1[8] + link1[11]) * (link2[6] - link2[10]*1j) + (link1[12] + link1[14]) * (link2[7] - link2[11]*1j)) / (8 * get_swap_prob[8])
-    link[9] = ((link1[1] + link1[2]*1j) * (link2[4] - link2[8]*1j) + (link1[5] + link1[6]*1j) * (link2[5] - link2[9]*1j) - (link1[9] + link1[10]*1j) * (link2[6] - link2[10]*1j) + (link1[13] + link1[14]*1j) * (link2[7] - link2[11]*1j)) / (8 * get_swap_prob[9])
-    link[10] = ((link1[0] + link1[3]) * (link2[0] - link2[12]) + (link1[4] + link1[7]) * (link2[1] - link2[13]) - (link1[8] + link1[11]) * (link2[2] - link2[14]) + (link1[12] + link1[15]) * (link2[3] - link2[15])) / (8 * get_swap_prob[10])
-    link[11] = ((link1[1] + link1[2]*1j) * (link2[0] - link2[12]) + (link1[5] + link1[6]*1j) * (link2[1] - link2[13]) - (link1[9] + link1[10]*1j) * (link2[2] - link2[14]) + (link1[13] + link1[14]*1j) * (link2[3] - link2[15])) / (8 * get_swap_prob[11])
-    link[12] = ((link1[1] - link1[2]*1j) * (link2[4] - link2[8]*1j) + (link1[5] - link1[6]*1j) * (link2[5] - link2[9]*1j) - (link1[9] - link1[10]*1j) * (link2[6] - link2[10]*1j) + (link1[13] - link1[14]*1j) * (link2[7] - link2[11]*1j)) / (8 * get_swap_prob[12])
-    link[13] = ((link1[0] - link1[3]) * (link2[4] - link2[8]*1j) + (link1[4] + link1[7]) * (link2[5] - link2[9]*1j) - (link1[8] + link1[11]) * (link2[6] - link2[10]*1j) + (link1[12] + link1[14]) * (link2[7] - link2[11]*1j)) / (8 * get_swap_prob[13])
-    link[14] = ((link1[1] - link1[2]*1j) * (link2[0] - link2[12]) + (link1[5] - link1[6]*1j) * (link2[1] - link2[13]) - (link1[9] - link1[10]*1j) * (link2[2] - link2[14]) + (link1[13] - link1[14]*1j) * (link2[3] - link2[15])) / (8 * get_swap_prob[14])
-    link[15] = ((link1[0] - link1[3]) * (link2[0] - link2[12]) + (link1[4] - link1[7]) * (link2[1] - link2[13]) - (link1[8] - link1[11]) * (link2[2] - link2[14]) + (link1[12] - link1[15]) * (link2[3] - link2[15])) / (8 * get_swap_prob[15]) 
+    get_swap_prob =  get_swap_prob_suc(t1, t2, link1, link2, depolar_rate, dephase_rate, amplitude_damping_rate, bit_phase_flip_rate) 
+    link = np.zeros(len(link1)).astype(np.complex128)
+    link[0] = (link1[0] * link2[0] + link1[4] * link2[1] + link1[8] * link2[2] + link1[12] * link2[3]) / (get_swap_prob[0] * 4)
+    link[1] = (link1[1] * link2[0] + link1[5] * link2[1] + link1[9] * link2[2] + link1[13] * link2[3]) / (get_swap_prob[1] * 4)
+    link[2] = (link1[2] * link2[0] + link1[6] * link2[1] + link1[10] * link2[2] + link1[14] * link2[3]) * -1  / (get_swap_prob[2] * 4)
+    link[3] = (link1[3] * link2[0] + link1[7] * link2[1] + link1[11] * link2[2] + link1[15] * link2[3]) / (get_swap_prob[3] * 4)
+    link[4] = (link1[0] * link2[4] + link1[4] * link2[5] + link1[8] * link2[6] + link1[12] * link2[7]) / (get_swap_prob[4] * 4)
+    link[5] = (link1[1] * link2[4] + link1[5] * link2[5] + link1[9] * link2[6] + link1[13] * link2[7]) / (get_swap_prob[5] * 4)
+    link[6] = (link1[2] * link2[4] + link1[6] * link2[5] + link1[10] * link2[6] + link1[14] * link2[7]) * -1  / (get_swap_prob[6] * 4)
+    link[7] = (link1[3] * link2[4] + link1[7] * link2[5] + link1[11] * link2[6] + link1[15] * link2[7]) / (get_swap_prob[7] * 4)
+    link[8] = (link1[0] * link2[8] + link1[4] * link2[9] + link1[8] * link2[10] + link1[12] * link2[11]) * -1  / (get_swap_prob[8] * 4)
+    link[9] = (link1[1] * link2[8] + link1[5] * link2[9] + link1[9] * link2[10] + link1[13] * link2[11]) * -1  / (get_swap_prob[9] * 4)
+    link[10] = (link1[2] * link2[8] + link1[6] * link2[9] + link1[10] * link2[10] + link1[14] * link2[11]) / (get_swap_prob[10] * 4)
+    link[11] = (link1[3] * link2[8] + link1[7] * link2[9] + link1[11] * link2[10] + link1[15] * link2[11]) * -1  / (get_swap_prob[11] * 4)
+    link[12] = (link1[0] * link2[12] + link1[4] * link2[13] + link1[8] * link2[14] + link1[12] * link2[15]) / (get_swap_prob[12] * 4)
+    link[13] = (link1[1] * link2[12] + link1[5] * link2[13] + link1[9] * link2[14] + link1[13] * link2[15]) / (get_swap_prob[13] * 4)
+    link[14] = (link1[2] * link2[12] + link1[6] * link2[13] + link1[10] * link2[14] + link1[14] * link2[15]) * -1 / (get_swap_prob[14] * 4)
+    link[15] = (link1[3] * link2[12] + link1[7] * link2[13] + link1[11] * link2[14] + link1[15] * link2[15]) / (get_swap_prob[15] * 4)
     link = depolarizing_noise(link, np.abs(t1-t2), depolar_rate)
     link = dephasing_noise(link, np.abs(t1-t2), dephase_rate)
-
-    if sum(link) > 1.1 or sum(link) < 0.9:
-        print(link)
-        print(sum(link))
-        raise ValueError(f"sum(lambdas) > 1")
     return link
 
 @nb.jit(nopython=True, error_model="numpy")
@@ -145,37 +125,55 @@ def get_dist_lambda_out(t1, t2, link1, link2, depolar_rate=0., dephase_rate=0., 
     """
     Get p_dist * w_dist
     """
+
+    link = np.zeros(len(link1)).astype(np.complex128)
+    get_dist_prob = get_dist_prob_suc(t1, t2, link1, link2, depolar_rate, dephase_rate, amplitude_damping_rate, bit_phase_flip_rate)
+    
     if t1 < t2:
-        link1 = depolarizing_noise(link1, np.abs(t1-t2), depolar_rate)
-        link1 = dephasing_noise(link1, np.abs(t1-t2), dephase_rate)
-    else:
         link2 = depolarizing_noise(link2, np.abs(t1-t2), depolar_rate)
         link2 = dephasing_noise(link2, np.abs(t1-t2), dephase_rate)
+    else:
+        link1 = depolarizing_noise(link1, np.abs(t1-t2), depolar_rate)
+        link1 = dephasing_noise(link1, np.abs(t1-t2), dephase_rate)
         
     
-    link = np.zeros(len(link1))
-    get_dist_prob = get_dist_prob_suc(t1, t2, link1, link2, depolar_rate, dephase_rate, amplitude_damping_rate, bit_phase_flip_rate)
-    link[0] = (link1[0] + link1[15]) * (link2[0] + link2[3] + link2[12] + link2[15]) / (8 * get_dist_prob[0])
-    link[1] = (link1[1] + link1[14] * 1j) * (link2[1] + link2[2]*1j + link2[13] + link2[14]*1j) / (8 * get_dist_prob[1])
-    link[2] = (link1[4] + link1[11] * 1j) * (link2[4] + link2[7] + link2[8]*1j + link2[11]*1j) / (8 * get_dist_prob[2])
-    link[3] = (link1[5] - link1[10]) * (link2[5] + link2[6]*1j + link2[9]*1j - link2[10]) / (8 * get_dist_prob[3])
-    link[4] = (link1[1] - link1[14] * 1j) * (link2[1] - link2[2]*1j + link2[13] - link2[14]*1j) / (8 * get_dist_prob[4])
-    link[5] = (link1[0] - link1[15]) * (link2[0] - link2[3] + link2[12] - link2[15]) / (8 * get_dist_prob[5])
-    link[6] = (link1[5] + link1[10]) * (link2[5] - link2[6]*1j + link2[9]*1j + link2[10]) / (8 * get_dist_prob[6])
-    link[7] = (link1[4] - link1[11] * 1j) * (link2[4] - link2[7] + link2[8]*1j - link2[11]*1j) / (8 * get_dist_prob[7])
-    link[8] = (link1[4] - link1[11] * 1j) * (link2[4] + link2[7] - link2[8]*1j - link2[11]*1j) / (8 * get_dist_prob[8])
-    link[9] = (link1[5] + link1[10]) * (link2[5] + link2[6]*1j - link2[9]*1j + link2[10]) / (8 * get_dist_prob[9])
-    link[10] = (link1[0] - link1[15]) * (link2[0] + link2[3] - link2[12] - link2[15]) / (8 * get_dist_prob[10])
-    link[11] = (link1[1] - link1[14] * 1j) * (link2[1] + link2[2]*1j - link2[13] - link2[14]*1j) / (8 * get_dist_prob[11])
-    link[12] = (-link1[5] + link1[10] * 1j) * (-1*link2[5] + link2[6]*1j + link2[9]*1j - link2[10]) / (8 * get_dist_prob[12])
-    link[13] = (link1[4] + link1[11] * 1j) * (link2[4] - link2[7] - link2[8]*1j + link2[11]*1j) / (8 * get_dist_prob[13])
-    link[14] = (link1[1] + link1[14] * 1j) * (link2[1] - link2[2]*1j - link2[13] + link2[14]*1j) / (8 * get_dist_prob[14])
-    link[15] = (link1[0] + link1[15]) * (link2[0] - link2[3] - link2[12] + link2[15]) / (8 * get_dist_prob[15])
     
-    if sum(link) > 1.1 or sum(link) < 0.9:
-        print(link)
-        print(sum(link))
-        raise ValueError(f"sum(lambdas) > 1")
+    link[0] = (link1[0] * link2[0] + link1[15] * link2[15]) /  (2 * get_dist_prob[0])
+    link[1] = (link1[1] * link2[1] - link1[14] * link2[14]) / (2 * get_dist_prob[1])
+    link[2] = (link1[1] * link2[2] + link1[14] * link2[13]) * -1 / (2 * get_dist_prob[2])
+    link[3] = (link1[0] * link2[3] + link1[15] * link2[12]) /  (2 * get_dist_prob[3])
+    link[4] = (link1[4] * link2[4] - link1[11] * link2[11]) / (2 * get_dist_prob[4])
+    link[5] = (link1[5] * link2[5] + link1[10] * link2[10]) / (2 * get_dist_prob[5])
+    link[6] = (link1[5] * link2[6] - link1[10] * link2[9]) * -1 / (2 * get_dist_prob[6])
+    link[7] = (link1[4] * link2[7] - link1[11] * link2[8])  / (2 * get_dist_prob[7])
+    link[8] = (link1[4] * link2[8] + link1[11] * link2[7]) * -1 / (2 * get_dist_prob[8])
+    link[9] = (link1[5] * link2[9]  + link1[10] * link2[6]) * -1/ (2 * get_dist_prob[9])
+    link[10] = (link1[5] * link2[10] + link1[10] * link2[5]) / (2 * get_dist_prob[10])
+    link[11] = (link1[4] * link2[11] + link1[11] * link2[4]) * -1 / (2 * get_dist_prob[11])
+    link[12] = (link1[0] * link2[12] + link1[15] * link2[3]) /  (2 * get_dist_prob[12])
+    link[13] = (link1[1] * link2[13] - link1[14] * link2[2]) / (2 * get_dist_prob[13])
+    link[14] = (link1[1] * link2[14] + link1[14] * link2[1]) * -1 / (2 * get_dist_prob[14])
+    link[15] = (link1[0] * link2[15] + link1[15] * link2[0]) / (2 * get_dist_prob[15])
+    # link[0] = (link1[0] + link1[15]) * (link2[0] + link2[3] + link2[12] + link2[15]) / (4 * get_dist_prob[0])
+    # link[1] = (link1[1] + link1[14] * 1j) * (link2[1] + link2[2]*1j + link2[13] + link2[14]*1j) / (4 * get_dist_prob[1])
+    # link[2] = (link1[4] + link1[11] * 1j) * (link2[4] + link2[7] + link2[8]*1j + link2[11]*1j) / (4 * get_dist_prob[2])
+    # link[3] = (link1[5] - link1[10]) * (link2[5] + link2[6]*1j + link2[9]*1j - link2[10]) / (4 * get_dist_prob[3])
+    # link[4] = (link1[1] - link1[14] * 1j) * (link2[1] - link2[2]*1j + link2[13] - link2[14]*1j) / (4 * get_dist_prob[4])
+    # link[5] = (link1[0] - link1[15]) * (link2[0] - link2[3] + link2[12] - link2[15]) / (4 * get_dist_prob[5])
+    # link[6] = (link1[5] + link1[10]) * (link2[5] - link2[6]*1j + link2[9]*1j + link2[10]) / (4 * get_dist_prob[6])
+    # link[7] = (link1[4] - link1[11] * 1j) * (link2[4] - link2[7] + link2[8]*1j - link2[11]*1j) / (4 * get_dist_prob[7])
+    # link[8] = (link1[4] - link1[11] * 1j) * (link2[4] + link2[7] - link2[8]*1j - link2[11]*1j) / (4 * get_dist_prob[8])
+    # link[9] = (link1[5] + link1[10]) * (link2[5] + link2[6]*1j - link2[9]*1j + link2[10]) / (4 * get_dist_prob[9])
+    # link[10] = (link1[0] - link1[15]) * (link2[0] + link2[3] - link2[12] - link2[15]) / (4 * get_dist_prob[10])
+    # link[11] = (link1[1] - link1[14] * 1j) * (link2[1] + link2[2]*1j - link2[13] - link2[14]*1j) / (4 * get_dist_prob[11])
+    # link[12] = (-link1[5] + link1[10] * 1j) * (-1*link2[5] + link2[6]*1j + link2[9]*1j - link2[10]) / (4 * get_dist_prob[12])
+    # link[13] = (link1[4] + link1[11] * 1j) * (link2[4] - link2[7] - link2[8]*1j + link2[11]*1j) / (4 * get_dist_prob[13])
+    # link[14] = (link1[1] + link1[14] * 1j) * (link2[1] - link2[2]*1j - link2[13] + link2[14]*1j) / (4 * get_dist_prob[14])
+    # link[15] = (link1[0] + link1[15]) * (link2[0] - link2[3] - link2[12] + link2[15]) / (4 * get_dist_prob[15])
+    # if sum(link) > 1.1 or sum(link) < 0.9:
+    #     print(link)
+    #     print(sum(link))
+    #     raise ValueError(f"sum(lambdas) > 1")
     return link
 
 @nb.jit(nopython=True, error_model="numpy")
@@ -195,8 +193,8 @@ def get_dist_prob_suc(t1, t2, link1, link2, depolar_rate=0., dephase_rate=0., am
     Get p_dist
     """
 
-    output = (link1[0] * link2[0] + link1[15] * link2[15])  / 2
-    return [output, output, output, output]
+    output = (link1[0] * link2[0] + link1[15] * link2[15]) / 2
+    return [output, output, output, output, output, output, output, output, output, output, output, output, output, output, output, output]
 
 
 
@@ -397,7 +395,7 @@ def join_links_helper(
         cutoff_func=memory_cut_off, evaluate_func=get_one, ycut=True, mt_cut=np.iinfo(int).max, w_cut=0.0, rt_cut=np.iinfo(int).max, 
         depolar_rate=0., dephase_rate=0., amplitude_damping_rate=0., bit_phase_flip_rate=0.):   
     size = len(pmf1)
-    result = np.zeros((size, 16), dtype=np.float64)  # Modify result to be a 2D array
+    result = np.zeros((size, 16), dtype=np.complex128)  # Modify result to be a 2D array
     for t1 in range(1, size):
         for t2 in range(1, size):
             waiting_time, selection_pass = cutoff_func(
@@ -407,7 +405,6 @@ def join_links_helper(
                 selection_pass = not selection_pass
             if selection_pass:
                 output = evaluate_func(t1, t2, w_func1[t1], w_func2[t2], depolar_rate, dephase_rate, amplitude_damping_rate, bit_phase_flip_rate)
-                
                 for i in range(len(w_func1[t1])):
                     result[waiting_time, i] += pmf1[t1, i] * pmf2[t2, i] * output[i]
                 

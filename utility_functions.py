@@ -40,7 +40,14 @@ def prob_abs_diff_sim(pmf, max_diff):
 
 # Adjusted to Bell scenario
 def bell_to_fid(lambdas):
-    return [float(phiplus[0]) for phiplus in lambdas]
+    fidelity = np.zeros(len(lambdas)).astype(np.complex128)
+    i = 0 
+    for sublist in lambdas:
+        # fidelity[i] = (sublist[0] + sublist[15] + np.real(sublist[12])*2) / 2
+        fidelity[i] = (sublist[0] + sublist[5] + sublist[10] + sublist[15]) / 4
+        i += 1
+
+    return fidelity
 
 
 def fid_to_werner(fid):
@@ -96,7 +103,7 @@ def secret_key_rate(pmf, w_func, extrapolation=False, show_warning=False):
 
 # Adjusted to Bell scenario
 def get_mean_bell(pmf, lambdas, extrapolation=False):
-    lambdas = [sublist[0] for sublist in lambdas]
+    lambdas = [(sublist[0]+sublist[5]+sublist[10]+sublist[15])/4 for sublist in lambdas]
     lambdas = np.where(np.isnan(lambdas), 0., lambdas)
     coverage = sum(pmf)
     if coverage <= 0:
