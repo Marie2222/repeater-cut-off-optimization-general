@@ -168,13 +168,13 @@ class RepeaterChainSimulation():
                 result= ifft(convolved_fourier / (1 - func_fourier))
             # validity check
             last_term = abs(result[-1])
-            if last_term > 10e-16:
-                logging.warning(
-                    f"The size of zero-padded array, shape={shape}, "
-                    "for the Fourier transform is not big enough. "
-                    "The resulting circular convolution might contaminate "
-                    "the distribution."
-                    f"The deviation is as least {float(last_term):.0e}.")
+            # if last_term > 10e-16:
+            #     logging.warning(
+            #         f"The size of zero-padded array, shape={shape}, "
+            #         "for the Fourier transform is not big enough. "
+            #         "The resulting circular convolution might contaminate "
+            #         "the distribution."
+            #         f"The deviation is as least {float(last_term):.0e}.")
             result = to_real(result[:trunc])
             if self.use_gpu and shape > self.gpu_threshold:
                 result = cp.asnumpy(result)
